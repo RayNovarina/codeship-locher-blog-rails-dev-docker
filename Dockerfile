@@ -28,6 +28,14 @@ COPY . ./
 # from the outside.
 EXPOSE 3000
 
+# Configure an entry point, so we don't need to specify
+# "bundle exec" for each of our commands. You can now run commands without
+# specifying "bundle exec" on the console. If you need to, you can override the
+# entrypoint as well.
+#     docker run -it demo "rake test"
+#     docker run -it --entrypoint="" demo "ls -la"
+#ENTRYPOINT ["bundle", "exec"]
+
 # The main command to run when the container starts. Also
 # tell the Rails dev server to bind to all interfaces by
 # default.
