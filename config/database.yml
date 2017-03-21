@@ -4,7 +4,10 @@ default: &default
   pool: 5
   timeout: 5000
   username: postgres
-  host: postgres
+  # Changed host for Heroku deploy:
+  host: <%= ENV['DATABASE_URL'] %>
+  # it was:
+  #host: postgres
   port: 5432
 
 development:
@@ -18,4 +21,3 @@ development:
 test:
   <<: *default
   database: app_test
-  

@@ -543,3 +543,316 @@ https://blog.codeship.com/testing-rails-application-docker/
     $ docker-compose run -e "RAILS_ENV=test" app bundle exec rake test
 
 ================================================================================
+
+Deploying Your Docker Rails App
+2015-10-27 by Leigh Halliday at:
+https://blog.codeship.com/deploying-docker-rails-app/
+
+In this article, we’ll talk about how to deploy our Docker container quickly and
+simply to Heroku.
+
+Simple Rails Docker on Heroku
+
+Most Rails developers are familiar with Heroku and have probably at one time or
+another deployed an app to it, even if it was just a personal blog or something
+you were playing around with. I’ve used Heroku both for personal projects and
+also for larger client projects with lots of success. Heroku isn’t just for
+Rails apps… you can deploy PHP apps, NodeJS apps, Elixir apps, and as of earlier
+this year you can even deploy Docker containers.
+
+--------------------------------------------------------------------------------
+Getting set up
+
+The first thing you’ll need to do is install the container-registry plugin by
+running:
+
+  $ heroku plugins:install heroku-container-registry
+
+Log in to the Heroku container registry:
+  $ heroku container:login
+
+--------------------------------------------------------------------------------
+
+Once you’ve set up a normal Rails app (either new or existing), you’ll need to
+add an additional file to the root called app.json.
+
+{
+  "name": "Codeship Dockerizing Rails app",
+  "description": "A base Rails5/Postgres/Puma Dockerized app for Heroku deployment",
+  "image": "heroku/ruby",
+  "addons": [
+    "heroku-postgresql"
+  ]
+}
+
+--------------------------------------------------------------------------------
+
+Heroku has a number of different images you can use for each of the different
+languages they support. Next we’ll create a file called Procfile which Heroku
+uses to help start our app.
+
+  web: bundle exec puma -C config/puma.rb
+
+--------------------------------------------------------------------------------
+
+The next step is to generate a new Dockerfile.
+
+The Dockerfile is extremely small, only pulling from the heroku/ruby image:
+
+  FROM heroku/ruby
+
+------------------------------------------------------
+NOTE: per heroku github repository for the heroku/ruby image at:
+  https://github.com/heroku/docker-ruby
+  Latest commit 86199e7  on Aug 19, 2015
+
+Readme:
+-------
+
+  Heroku Ruby Docker Image
+
+  This image is for use with Heroku Docker CLI.
+
+  Usage
+
+  Your project must contain the following files:
+
+  Gemfile and Gemfile.lock
+  Ruby 2.2.3
+  assets:precompile rake task
+  Procfile (see the Heroku Dev Center for details)
+
+  Then create an app.json file in the root directory of your application with at least these contents:
+  {
+    "name": "Your App's Name",
+    "description": "An example app.json for heroku-docker",
+    "image": "heroku/ruby"
+  }
+
+  Install the heroku-docker toolbelt plugin:
+
+    $ heroku plugins:install heroku-docker
+
+  Initialize your app:
+
+    $ heroku docker:init
+    Wrote Dockerfile
+    Wrote docker-compose.yml
+
+  And run it with Docker Compose:
+
+    $ docker-compose up web
+
+  The first time you run this command, Bundler will download all dependencies
+  into the container, precompile your assets (using the assets:precompile rake
+  task), build your application, and then run it. Subsequent runs will use
+  cached dependencies (unless yourGemfileorGemfile.lock has changed).
+
+  You'll be able to access your application at http://<docker-ip>:8080,
+  where <docker-ip> is either the value of running boot2docker ip if you are on
+  Mac or Windows. If you're running it natively, you'll need to use docker
+  inspect to find the IPAddress key.
+
+
+Dockerfile:
+-----------
+
+  FROM heroku/cedar:14
+  MAINTAINER Terence Lee <terence@heroku.com>
+
+  RUN mkdir -p /app/user
+  WORKDIR /app/user
+
+  ENV GEM_PATH /app/heroku/ruby/bundle/ruby/2.2.0
+  ENV GEM_HOME /app/heroku/ruby/bundle/ruby/2.2.0
+  RUN mkdir -p /app/heroku/ruby/bundle/ruby/2.2.0
+
+  # Install Ruby
+  RUN mkdir -p /app/heroku/ruby/ruby-2.2.3
+  RUN curl -s --retry 3 -L https://heroku-buildpack-ruby.s3.amazonaws.com/cedar-14/ruby-2.2.3.tgz |
+      tar xz -C/app/heroku/ruby/ruby-2.2.3
+  ENV PATH /app/heroku/ruby/ruby-2.2.3/bin:$PATH
+
+  # Install Node
+  RUN curl -s --retry 3 -L http://s3pository.heroku.com/node/v0.12.7/node-v0.12.7-linux-x64.tar.gz |
+      tar xz -C /app/heroku/ruby/
+  RUN mv /app/heroku/ruby/node-v0.12.7-linux-x64 /app/heroku/ruby/node-0.12.7
+  ENV PATH /app/heroku/ruby/node-0.12.7/bin:$PATH
+
+  # Install Bundler
+  RUN gem install bundler -v 1.9.10 --no-ri --no-rdoc
+  ENV PATH /app/user/bin:/app/heroku/ruby/bundle/ruby/2.2.0/bin:$PATH
+  ENV BUNDLE_APP_CONFIG /app/heroku/ruby/.bundle/config
+
+  # Run bundler to cache dependencies
+  ONBUILD COPY ["Gemfile", "Gemfile.lock", "/app/user/"]
+  ONBUILD RUN bundle install --path /app/heroku/ruby/bundle --jobs 4
+  ONBUILD ADD . /app/user
+
+  # How to conditionally `rake assets:precompile`?
+  ONBUILD ENV RAILS_ENV production
+  ONBUILD ENV SECRET_KEY_BASE $(openssl rand -base64 32)
+  ONBUILD RUN bundle exec rake assets:precompile
+
+  # export env vars during run time
+  RUN mkdir -p /app/.profile.d/
+  RUN echo "cd /app/user/" > /app/.profile.d/home.sh
+  ONBUILD RUN echo "export PATH=\"$PATH\" GEM_PATH=\"$GEM_PATH\" GEM_HOME=\"$GEM_HOME\" RAILS_ENV=\"\${RAILS_ENV:-$RAILS_ENV}\" SECRET_KEY_BASE=\"\${SECRET_KEY_BASE:-$SECRET_KEY_BASE}\" BUNDLE_APP_CONFIG=\"$BUNDLE_APP_CONFIG\"" > /app/.profile.d/ruby.sh
+
+  COPY ./init.sh /usr/bin/init.sh
+  RUN chmod +x /usr/bin/init.sh
+
+  ENTRYPOINT ["/usr/bin/init.sh"]
+
+init.sh
+-------
+  ```ruby
+    #!/bin/bash
+
+    for SCRIPT in /app/.profile.d/*;
+      do source $SCRIPT;
+    done
+
+    exec "$@"
+  ```
+--------------------------------------------------------------------------------
+
+The docker-compose.yml file is a little more involved and sets up two linked
+images (one for Ruby/Rails and one for Postgres):
+
+web:
+  build: .
+  command: 'bash -c ''bundle exec puma -C config/puma.rb'''
+  working_dir: /app/user
+  environment:
+    PORT: 8080
+    DATABASE_URL: 'postgres://postgres:@herokuPostgresql:5432/postgres'
+  ports:
+    - '8080:8080'
+  links:
+    - herokuPostgresql
+shell:
+  build: .
+  command: bash
+  working_dir: /app/user
+  environment:
+    PORT: 8080
+    DATABASE_URL: 'postgres://postgres:@herokuPostgresql:5432/postgres'
+  ports:
+    - '8080:8080'
+  links:
+    - herokuPostgresql
+  volumes:
+    - '.:/app/user'
+herokuPostgresql:
+  image: postgres
+
+One great benefit of Heroku Docker is that not only can you deploy Docker
+containers to Heroku, but you can also use this to run a “Heroku-like”
+environment locally for development.
+Not only can you deploy @Docker containers to @Heroku, you can run a
+Heroku-like env locally.
+
+--------------------------------------------------------------------------------
+
+You’ll notice that there is an environment variable called DATABASE_URL in the
+new above docker-compose.yml file. We can modify our database.yml file to use
+this ENV variable to connect to the database.
+
+default: &default
+  adapter: postgresql
+  encoding: unicode
+  pool: 5
+  timeout: 5000
+  username: postgres
+  host: <%= ENV['DATABASE_URL'] %>
+
+--------------------------------------------------------------------------------
+
+  We’ll be using the Puma web server for this Rails application, and we need to
+  set up a config file located in config/puma.rb. Please make sure that you have
+  puma in your Gemfile as well!
+
+  port ENV['PORT'] || 3000
+  environment ENV['RACK_ENV'] || 'development'
+
+  ------------------------------------------------------------------------------
+
+  Up and running locally
+
+  To run this app locally in the Docker container you can use the following
+  command, which at this point is straight-up Docker and Docker Compose
+  (rather than something specific to Heroku):
+
+    $ docker-compose up web
+
+      Step 1/1 : RUN echo "export PATH=\"$PATH\" GEM_PATH=\"$GEM_PATH\" GEM_HOME=\"$GEM_HOME\"  RAILS_ENV=\"\${RAILS_ENV:-$RAILS_ENV}\" SECRET_KEY_BASE=\"\${SECRET_KEY_BASE:-$SECRET_KEY_BASE}\" BUNDLE_APP_CONFIG=\"$BUNDLE_APP_CONFIG\"" > /app/.profile.d/ruby.sh
+        ---> Running in 0f457fbba0cf
+        ---> 0e9ec171694b
+      Successfully built 0e9ec171694b
+      WARNING: Image for service web was built because it did not already exist. To rebuild this image you must use `docker-compose build` or `docker-compose up --build`.
+      Creating demo_herokuPostgresql_1
+      Creating demo_web_1
+      Attaching to demo_web_1
+      web_1               | Puma starting in single mode...
+      web_1               | * Version 3.7.1 (ruby 2.2.3-p173), codename: Snowy Sagebrush
+      web_1               | * Min threads: 0, max threads: 16
+      web_1               | * Environment: development
+      web_1               | * Listening on tcp://0.0.0.0:8080
+      web_1               | Use Ctrl-C to stop
+
+  ------------------------------------------------------------------------------
+    $ docker images
+
+      REPOSITORY          TAG                 IMAGE ID            CREATED             SIZE
+      demo_web            latest              0e9ec171694b        29 minutes ago      1.45 GB
+      postgres            latest              e8060950e00d        About an hour ago   266 MB
+      demo_app            latest              19560a5025ba        11 hours ago        861 MB
+      heroku/ruby         latest              3f1738df02d5        19 months ago       1.39 GB
+
+    Note: Pulling herokuPostgresql is image (postgres:latest)
+  ------------------------------
+    $ docker ps
+
+      CONTAINER ID        IMAGE               COMMAND                  PORTS                     NAMES
+      387afa7a81e3        demo_web            "/usr/bin/init.sh ..."   0.0.0.0:8080->8080/tcp    demo_web_1
+      25b41db2b5a7        postgres            "docker-entrypoint..."   5432/tcp                  demo_herokuPostgresql_1
+
+  -------------------------------------------------
+
+  This command will open the app in the browser:
+  #with the correct IP address:
+  #open "http://$(docker-machine ip default):8080"
+      localhost:8080
+
+  If all worked well you should be able to see your app running within the
+  Heroku/Ruby Docker container.
+
+  my result (good, as expected):
+
+    {"message":"Hello world!"}
+--------------------------------------------------------------------------------
+
+  Deploying to Heroku
+
+  To deploy to Heroku we’ll first need to make sure we have created an app on
+  Heroku. Take note of the name they gave to your app in the output.
+
+    $ heroku create codeship-demo-94037
+      Creating ⬢ codeship-demo-94037... done
+      https://codeship-demo-94037.herokuapp.com/ | https://git.heroku.com/codeship-demo-94037.git
+
+    $ git remote -v
+      heroku  https://git.heroku.com/secret-anchorage-84269.git (fetch)
+      heroku  https://git.heroku.com/secret-anchorage-84269.git (push)
+
+  After that we can deploy it using the following command. Keep in mind that you
+  should use your app name on Heroku, not mine:
+
+    $ heroku docker:release --app warm-fortress-1700
+
+  Once it is done deploying (which will take a few minutes the first time as it
+    uploads the somewhat large image slug to Heroku), you can open it in the
+    browser using the command
+
+      $ heroku open.

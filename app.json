@@ -1,0 +1,8 @@
+{
+  "name": "Codeship Dockerizing Rails app",
+  "description": "A base Rails5/Postgres/Puma Dockerized app for Heroku deployment",
+  "image": "heroku/ruby",
+  "addons": [
+    "heroku-postgresql"
+  ]
+}
