@@ -9,5 +9,9 @@ app:
     - postgres
 postgres:
   image: postgres:9.4
+  # persist the database between containers by storing it in a volume
+  volumes:
+    - demo-postgres:/var/lib/postgresql/data
+
   ports:
     - "5432"

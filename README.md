@@ -356,6 +356,9 @@ Change docker-compose.yml to:
       - postgres
   postgres:
     image: postgres:9.4
+    # persist the database between containers by storing it in a volume
+    volumes:
+      - demo-postgres:/var/lib/postgresql/data
     ports:
       - "5432"
 
@@ -364,6 +367,36 @@ We defined a new container called postgres, based on the PostgreSQL 9.4 image
 on the new image, and told our app container to define a link to the database.
 Update, Compose now recommends to use the hostnames instead of environment
 variables to access linked services.
+
+PostgreSQL data persistence:
+In docker-compose.yml, the lines
+
+  postgres:
+    volumes:
+      - demo-postgres:/var/lib/postgresql/data
+
+Persist the database between containers by storing it in a volume per:
+https://www.andreagrandi.it/2015/02/21/how-to-create-a-docker-image-for-postgresql-and-persist-data/
+Otherwise, "docker-compose down" will stop the container and the database will
+be lost and upon "docker-compose up" and a access to localhost:3000 will result
+in Rails error:
+  Fail: app_development database not found.
+Another workaround is to:
+
+  $ docker-compose down
+  Stopping demo_app_1 ... done
+  Stopping demo_postgres_1 ... done
+  Removing demo_app_1 ... done
+  Removing demo_postgres_1 ... done
+
+  On another window:
+  $ docker-compose up
+
+  Back to first window:
+  $ docker-compose run -e "RAILS_ENV=development" app rake db:create db:migrate
+  Created database 'app_development'
+  Created database 'app_test'
+
 
 ``ruby
 Replace rails config/database.yml with:
