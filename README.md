@@ -504,6 +504,10 @@ Having made those changes, let’s rebuild our containers and configure the data
 
   $ docker-compose run app bundle exec rake db:migrate
 
+  or
+
+  $ docker-compose run -e "RAILS_ENV=development" app bundle exec rake db:create db:migrate
+
   $ docker images
     REPOSITORY          TAG                 IMAGE ID            CREATED             SIZE
     demo_app            latest              e65c6a2858c8        2 minutes ago       861 MB
@@ -523,4 +527,19 @@ Having made those changes, let’s rebuild our containers and configure the data
 
     Results in Rails "yay" screen.
 
-    ---------------------------------------------------
+
+================================================================================
+
+Testing Your Rails Application with Docker
+2015-07-22 by Marko Locher at:
+https://blog.codeship.com/testing-rails-application-docker/
+
+  Running your basic test suite is done quite easily. With the configuration
+  from my last post, you can simply run the following commands to spin up the
+  environment, create and seed the database, and run your test suite.
+
+    $ docker-compose up
+    $ docker-compose run -e "RAILS_ENV=test" app bundle exec rake db:create db:migrate
+    $ docker-compose run -e "RAILS_ENV=test" app bundle exec rake test
+
+================================================================================
